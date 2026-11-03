@@ -1,7 +1,6 @@
-# FCR Dashboard - Git ignore rules
-# Generated files only. Batch scripts, the SQLite database, JSON settings,
-# the PyInstaller spec, version_info.txt, static and tests are deliverables
-# and stay tracked.
+# FCR Python repository ignore rules
+# The existing SQLite baseline database is tracked intentionally for app/test compatibility.
+# Machine-local settings and secrets are not tracked.
 
 # Python bytecode and packaging metadata
 __pycache__/
@@ -15,9 +14,10 @@ venv/
 env/
 ENV/
 
-# Local secrets / environment overrides
+# Local secrets / machine-specific settings
 .env
 .env.*
+settings.json
 
 # PyInstaller and archive build output
 build/
@@ -26,7 +26,7 @@ dist/
 *.zip
 FCR_Dashboard.zip
 
-# Runtime data written beside the executable
+# Runtime output
 logs/
 backups/
 exports/
@@ -40,11 +40,9 @@ exports/
 .coverage.*
 htmlcov/
 
-# Editors
+# Editors and OS metadata
 .vscode/
 .idea/
-
-# Operating system metadata
 .DS_Store
 Thumbs.db
 desktop.ini
