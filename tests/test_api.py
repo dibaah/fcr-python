@@ -118,20 +118,24 @@ def test_signed_in_session_skips_the_login_screen():
     assert "if (!await isAuthenticated())" in js, "a valid session should skip the gate"
 
 
-def test_python_auth_shim_demo_login(client):
-    c = client
-    bad = c.post("/api/auth/login", json={"username": "demo", "password": "nope"})
-    assert bad.status_code == 401
-    ok = c.post("/api/auth/login", json={"username": "demo", "password": "demo"})
-    assert ok.status_code == 200
-    assert c.get("/api/auth/me").status_code == 200
-    c.post("/api/auth/logout")
-    assert c.get("/api/auth/me").status_code == 401
+def test_python_auth_shim_demo_login():
+    """Isolated client: this test logs out at the end, which would break
+    every other test that shares the session-scoped signed-in `client`."""
+    with client_session() as c:
+        bad = c.post("/api/auth/login", json={"username": "demo", "password": "nope"})
+        assert bad.status_code == 401
+        ok = c.post("/api/auth/login", json={"username": "demo", "password": "demo"})
+        assert ok.status_code == 200
+        assert c.get("/api/auth/me").status_code == 200
+        c.post("/api/auth/logout")
+        assert c.get("/api/auth/me").status_code == 401
 
 
-@pytest.fixture(scope="session")
-def client():
-    """TestClient bound to a throw-away copy of the database."""
+def _make_client():
+    """TestClient bound to a throw-away copy of the database.
+
+    FCR_DATA_DIR is process-global and main imports once, so all clients
+    share one temp DB — but each gets its own cookie jar."""
     tmp_dir = Path(tempfile.mkdtemp(prefix="fcr-test-"))
     source_db = REPO_ROOT / "fcr_database.db"
     if source_db.exists():
@@ -145,11 +149,28 @@ def client():
     from fastapi.testclient import TestClient
 
     assert main.DB_PATH.parent == tmp_dir.resolve(), "tests must not use the real database"
+    return TestClient(main.app)
 
-    with TestClient(main.app) as test_client:
+
+from contextlib import contextmanager
+
+
+@contextmanager
+def client_session():
+    with _make_client() as test_client:
+        # The session gate (main.require_session) protects every /api route
+        # except auth.PUBLIC_API_PATHS — sign in once per client.
+        login = test_client.post(
+            "/api/auth/login", json={"username": "demo", "password": "demo"}
+        )
+        assert login.status_code == 200, login.text
         yield test_client
 
-    shutil.rmtree(tmp_dir, ignore_errors=True)
+
+@pytest.fixture(scope="session")
+def client():
+    with client_session() as test_client:
+        yield test_client
 
 
 # ─────────────────────────────────────────────────────────────────
