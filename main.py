@@ -22,13 +22,17 @@ from app.services.scheduler import start_scheduler, stop_scheduler
 from app.routers import fcr, stats, export, settings, backup, folders, health, auth
 
 # ─────────────────────────────────────────────────────────────────
-# Logging
+# Logging — INFO to logs/app.log, WARNING and above to logs/error.log
 # ─────────────────────────────────────────────────────────────────
+_file_handler = logging.FileHandler(LOG_DIR / "app.log", encoding="utf-8")
+_error_handler = logging.FileHandler(LOG_DIR / "error.log", encoding="utf-8")
+_error_handler.setLevel(logging.WARNING)
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
     handlers=[
-        logging.FileHandler(LOG_DIR / "app.log", encoding="utf-8"),
+        _file_handler,
+        _error_handler,
         logging.StreamHandler(),
     ],
 )
@@ -80,6 +84,27 @@ async def add_security_headers(request: Request, call_next):
     if request.url.path.startswith("/api"):
         response.headers.setdefault("Cache-Control", "no-store")
     return response
+
+
+@app.middleware("http")
+async def require_session(request: Request, call_next):
+    """Session gate for the data API.
+
+    Every /api route needs the HttpOnly ``fcr_auth`` cookie issued by
+    /api/auth/login, except the public paths in auth.PUBLIC_API_PATHS.
+    The UI shell and static assets stay reachable so the SPA can render
+    its own sign-in screen. (Demo shim — real RBAC comes with the .NET host.)
+    """
+    path = request.url.path
+    if (
+        path.startswith("/api")
+        and path not in auth.PUBLIC_API_PATHS
+        and not auth.valid_session(request.cookies.get("fcr_auth"))
+    ):
+        from starlette.responses import JSONResponse
+
+        return JSONResponse({"detail": "Not authenticated"}, status_code=401)
+    return await call_next(request)
 
 
 # ─────────────────────────────────────────────────────────────────
